@@ -1,28 +1,25 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
-local ESPEnabled = false
+local ESPEnabled = true
 
--- UI
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 100, 0, 50)
-ToggleButton.Position = UDim2.new(0, 10, 0, 10)
-ToggleButton.Text = "ESP OFF"
-ToggleButton.Parent = ScreenGui
-
-ToggleButton.MouseButton1Click:Connect(function()
+-- UI Toggle (по желанию)
+local gui = Instance.new("ScreenGui", game.CoreGui)
+local button = Instance.new("TextButton", gui)
+button.Size = UDim2.new(0, 100, 0, 40)
+button.Position = UDim2.new(0, 10, 0, 10)
+button.Text = "ESP ON"
+button.MouseButton1Click:Connect(function()
     ESPEnabled = not ESPEnabled
-    ToggleButton.Text = ESPEnabled and "ESP ON" or "ESP OFF"
+    button.Text = ESPEnabled and "ESP ON" or "ESP OFF"
 end)
 
--- Создание ESP
+-- Создание Highlight
 local function CreateESP(player)
     if player == LocalPlayer then return end
-    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
-
-    local existing = player.Character:FindFirstChildOfClass("Highlight")
-    if existing then return end
+    if not player.Character then return end
+    if player.Character:FindFirstChildOfClass("Highlight") then return end
 
     local highlight = Instance.new("Highlight")
     highlight.Name = "Highlight_ESP"
@@ -34,32 +31,59 @@ local function CreateESP(player)
     highlight.Parent = player.Character
 end
 
--- Основной цикл
+-- Проверка видимости через Raycast
+local function IsVisible(targetPart)
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin)
+    local ray = RaycastParams.new()
+    ray.FilterType = Enum.RaycastFilterType.Blacklist
+    ray.FilterDescendantsInstances = {LocalPlayer.Character}
+
+    local result = workspace:Raycast(origin, direction, ray)
+    if result and result.Instance:IsDescendantOf(targetPart.Parent) then
+        return true -- виден
+    end
+    return false -- за стенкой
+end
+
+-- Обновление ESP и цвета
 RunService.RenderStepped:Connect(function()
+    if not ESPEnabled then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local esp = p.Character:FindFirstChildOfClass("Highlight")
+                if esp then esp.Enabled = false end
+            end
+        end
+        return
+    end
+
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
             local esp = player.Character:FindFirstChildOfClass("Highlight")
-            if ESPEnabled and not esp then
-                pcall(function()
-                    CreateESP(player)
-                end)
-            elseif not ESPEnabled and esp then
-                esp:Destroy()
+            if not esp then
+                CreateESP(player)
+                esp = player.Character:FindFirstChildOfClass("Highlight")
+            end
+            if esp then
+                esp.Enabled = true
+                local head = player.Character:FindFirstChild("Head")
+                if IsVisible(head) then
+                    esp.FillColor = Color3.new(0, 1, 0) -- зелёный (виден)
+                else
+                    esp.FillColor = Color3.new(1, 0, 0) -- красный (за стеной)
+                end
             end
         end
     end
 end)
 
--- Подключение новых игроков
+-- На новых игроков
 Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function(char)
-        char:WaitForChild("Humanoid")
-        char:WaitForChild("HumanoidRootPart")
-        wait(0.1)
+    player.CharacterAdded:Connect(function()
+        wait(1)
         if ESPEnabled then
-            pcall(function()
-                CreateESP(player)
-            end)
+            CreateESP(player)
         end
     end)
 end)
