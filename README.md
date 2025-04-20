@@ -1,2 +1,0 @@
-# HeadNew
-Roblox Script
